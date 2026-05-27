@@ -127,7 +127,7 @@
         port: "22/tcp"
         permanent: true
         state: enabled
-        immediate: true  # サービス起動後なので、即時反映(immediate)が正常に吸い込まれます
+        immediate: true 
 
     - name: "3. 監視用ポート(9100)の解放"
       ansible.posix.firewalld:
@@ -152,8 +152,37 @@
         line: "{{ item.line }}"
         validate: "/usr/sbin/sshd -t -f %s"
       loop:
-        # Vagrantとの接続を維持するため、22番・パスワード許可で固定します
         - { regexp: '^#?Port ', line: "Port 22" }
         - { regexp: '^#?PasswordAuthentication ', line: "PasswordAuthentication yes" }
         - { regexp: '^#?PermitRootLogin ', line: "PermitRootLogin no" }
       notify: restart sshd
+
+# -----------------------------------------------------
+# 4. 長期連続稼働テスト用：自動自律運用スケジュール設定
+# -----------------------------------------------------
+- name: "【Server A限定】Discordへ本番レポートを自動定期配信(AM 9:00)"
+  ansible.builtin.cron:
+    name: "NOC_system Discord Report Delivery"
+    minute: "0"
+    hour: "9"
+    user: "vagrant"
+    job: "python3 /opt/noc-integrated-bot/main.py >> /var/log/noc_bot.log 2>&1"
+  when: inventory_hostname == 'server-a'
+
+- name: "【Server A限定】時系列環境データを自動夜間バックアップ(AM 3:00)"
+  ansible.builtin.cron:
+    name: "NOC_system Nightly Backup"
+    minute: "0"
+    hour: "3"
+    user: "vagrant"
+    job: "ansible-playbook -i /opt/noc-system/inventories/vagrant/hosts.ini /opt/noc-system/site.yml --tags backup >> /var/log/noc_backup.log 2>&1"
+  when: inventory_hostname == 'server-a'
+
+- name: "【Server A限定】14日以上経過した古い監査ログ・レポートの自動ローテーション削除(AM 3:05)"
+  ansible.builtin.cron:
+    name: "NOC_system Report Retention Rotation"
+    minute: "5"
+    hour: "3"
+    user: "vagrant"
+    job: "find /var/lib/noc_reports/ -type f -mtime +14 -exec rm -f {} \\;"
+  when: inventory_hostname == 'server-a'
