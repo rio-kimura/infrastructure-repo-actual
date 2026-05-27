@@ -1,0 +1,159 @@
+---
+# -----------------------------------------------------
+# 1. スワップ領域 & 時刻同期 (リソース安定化)
+# -----------------------------------------------------
+- name: "スワップファイルの作成プロセス"
+  block:
+    - name: "スワップファイルの存在確認"
+      ansible.builtin.stat:
+        path: /swapfile
+      register: swap_stat
+
+    - name: "スワップファイルの生成"
+      ansible.builtin.command:
+        cmd: "fallocate -l {{ common_swap_size_mb | default(2048) }}M /swapfile"
+      when: not swap_stat.stat.exists
+      register: fallocate_result
+      ignore_errors: yes
+
+    - name: "スワップファイルの生成(ddフォールバック)"
+      ansible.builtin.command:
+        cmd: "dd if=/dev/zero of=/swapfile bs=1M count={{ common_swap_size_mb | default(2048) }}"
+      when: 
+        - not swap_stat.stat.exists
+        - (fallocate_result is failed or fallocate_result is skipped)
+
+- name: "スワップの権限と永続化"
+  block:
+    - name: "権限設定"
+      ansible.builtin.file:
+        path: /swapfile
+        owner: root
+        group: root
+        mode: '0600'
+        state: file
+    - name: "有効化とマウント設定"
+      ansible.posix.mount:
+        name: none
+        src: /swapfile
+        fstype: swap
+        opts: sw
+        state: present
+
+- name: "Chrony(時刻同期)の設定"
+  block:
+    - name: "Chronyインストール"
+      ansible.builtin.dnf:
+        name: chrony
+        state: present
+    - name: "サービス起動"
+      ansible.builtin.service:
+        name: chronyd
+        state: started
+        enabled: true
+
+# -----------------------------------------------------
+# 2. Node Exporter の導入 (監視基盤)
+# -----------------------------------------------------
+- name: "Node Exporter 実行ユーザーの作成"
+  ansible.builtin.user:
+    name: node_exporter
+    shell: /sbin/nologin
+    system: yes
+    create_home: no
+
+- name: "Node Exporter バイナリのダウンロードと展開"
+  ansible.builtin.unarchive:
+    src: "https://github.com/prometheus/node_exporter/releases/download/v1.8.1/node_exporter-1.8.1.linux-amd64.tar.gz"
+    dest: /tmp
+    remote_src: yes
+    creates: "/tmp/node_exporter-1.8.1.linux-amd64/node_exporter"
+
+- name: "バイナリの配置"
+  ansible.builtin.copy:
+    src: "/tmp/node_exporter-1.8.1.linux-amd64/node_exporter"
+    dest: /usr/local/bin/node_exporter
+    owner: node_exporter
+    group: node_exporter
+    mode: '0755'
+    remote_src: yes
+
+- name: "Node Exporter systemdユニットファイルの作成"
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/node_exporter.service
+    content: |
+      [Unit]
+      Description=Node Exporter
+      Wants=network-online.target
+      After=network-online.target
+
+      [Service]
+      User=node_exporter
+      Group=node_exporter
+      Type=simple
+      ExecStart=/usr/local/bin/node_exporter
+
+      [Install]
+      WantedBy=multi-user.target
+    mode: '0644'
+
+- name: "Node Exporter サービスの起動と有効化"
+  ansible.builtin.service:
+    name: node_exporter
+    state: started
+    enabled: true
+
+# -----------------------------------------------------
+# 3. セキュリティ & 通信制御 (Firewalld / SSH)
+# -----------------------------------------------------
+- name: "セキュリティパッケージのインストール"
+  ansible.builtin.dnf:
+    name:
+      - policycoreutils-python-utils
+      - firewalld
+      - python3-firewall
+    state: present
+
+- name: "Firewalld 起動と全ポート制御"
+  block:
+    - name: "1. 先にFirewalldサービスを起動・有効化"
+      ansible.builtin.service:
+        name: firewalld
+        state: started
+        enabled: true
+
+    - name: "2. SSHポート(22)をFirewalldで許可（締め出し防止）"
+      ansible.posix.firewalld:
+        port: "22/tcp"
+        permanent: true
+        state: enabled
+        immediate: true  # サービス起動後なので、即時反映(immediate)が正常に吸い込まれます
+
+    - name: "3. 監視用ポート(9100)の解放"
+      ansible.posix.firewalld:
+        port: "9100/tcp"
+        permanent: true
+        state: enabled
+        immediate: true
+
+- name: "SELinux & SSHD 設定変更"
+  block:
+    - name: "SELinux 22番ポート許可の確認"
+      community.general.seport:
+        ports: "22"
+        proto: tcp
+        setype: ssh_port_t
+        state: present
+
+    - name: "SSHD要塞化設定（構築用安定設定）"
+      ansible.builtin.lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: "{{ item.regexp }}"
+        line: "{{ item.line }}"
+        validate: "/usr/sbin/sshd -t -f %s"
+      loop:
+        # Vagrantとの接続を維持するため、22番・パスワード許可で固定します
+        - { regexp: '^#?Port ', line: "Port 22" }
+        - { regexp: '^#?PasswordAuthentication ', line: "PasswordAuthentication yes" }
+        - { regexp: '^#?PermitRootLogin ', line: "PermitRootLogin no" }
+      notify: restart sshd

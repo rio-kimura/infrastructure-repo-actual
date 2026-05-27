@@ -1,0 +1,93 @@
+import requests
+import time
+import os
+
+# --- 設定値の読み込み ---
+WEBHOOK_URL = os.getenv('DISCORD_WEBHOOK_URL')
+PROMETHEUS_URL = os.getenv('PROMETHEUS_ENDPOINT', 'http://localhost:9090/api/v1/query')
+
+# 通知状態管理（一度通知したら、復旧するまで何度も送らないための仕組み）
+# キー例: 'HostDown_10.149.245.115:9100', 'HighMem_10.149.245.115:9100'
+alert_status = {}
+
+def get_metrics(query):
+    try:
+        response = requests.get(PROMETHEUS_URL, params={'query': query}, timeout=5)
+        return response.json()['data']['result']
+    except Exception as e:
+        print(f"Metrics fetch error: {e}")
+        return []
+
+def send_discord(alert_id, message, color):
+    # すでに通知済みなら何もしない
+    if alert_status.get(alert_id):
+        return
+    
+    payload = {
+        "embeds": [{
+            "title": message,
+            "color": color,
+            "description": "監視システムが異常を検知しました。"
+        }]
+    }
+    try:
+        requests.post(WEBHOOK_URL, json=payload, timeout=5)
+        alert_status[alert_id] = True # 通知済み状態にする
+    except Exception as e:
+        print(f"Discord send error: {e}")
+
+def resolve_alert(alert_id):
+    # 正常に戻ったら状態をリセットする
+    if alert_id in alert_status:
+        del alert_status[alert_id]
+
+def check_alerts():
+    """
+    異常判定メインロジック
+    """
+    # -----------------------------------------------------
+    # 1. 死活監視 (up == 0)
+    # -----------------------------------------------------
+    dead_nodes = get_metrics('up == 0')
+    active_instances = [n['metric']['instance'] for n in get_metrics('up == 1')]
+
+    # 異常検知
+    for node in dead_nodes:
+        instance = node['metric']['instance']
+        alert_id = f"HostDown_{instance}"
+        send_discord(alert_id, f"🚨 【致命的】サーバーダウン: {instance}", 15158332) # Red
+
+    # 復旧確認
+    for instance in active_instances:
+        resolve_alert(f"HostDown_{instance}")
+
+    # -----------------------------------------------------
+    # 2. メモリ使用率監視 (実運用設定: 90%)
+    # -----------------------------------------------------
+    # ★ しきい値を 90 に戻しました
+    threshold = 90 
+    mem_query = f'100 * (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) > {threshold}'
+    high_mem_nodes = get_metrics(mem_query)
+    
+    # 異常検知したIPのリスト
+    high_mem_instances = []
+
+    for node in high_mem_nodes:
+        instance = node['metric']['instance']
+        high_mem_instances.append(instance)
+        alert_id = f"HighMem_{instance}"
+        # メッセージ内の％表示も threshold と連動
+        send_discord(alert_id, f"⚠️ 【警告】メモリ使用率 {threshold}% 超過: {instance}", 16776960) # Yellow
+
+    # 正常（しきい値以下）に戻ったインスタンスの復旧処理
+    all_nodes = get_metrics('up')
+    for node in all_nodes:
+        instance = node['metric']['instance']
+        if instance not in high_mem_instances:
+            resolve_alert(f"HighMem_{instance}")
+
+if __name__ == "__main__":
+    print(f"Monitoring Bot Started with threshold 90%...")
+    while True:
+        check_alerts()
+        time.sleep(15) # 15秒おきにチェック

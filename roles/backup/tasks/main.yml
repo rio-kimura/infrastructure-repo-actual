@@ -1,0 +1,66 @@
+---
+# -----------------------------------------------------
+# 1. サーバーB側でのアーカイブ準備 (Source Side)
+# -----------------------------------------------------
+- name: "バックアップ用シェルスクリプトの配置"
+  ansible.builtin.template:
+    src: backup_volumes.sh.j2
+    dest: /usr/local/bin/backup_volumes.sh
+    mode: '0700' # rootのみ実行可能
+    owner: root
+
+- name: "バックアップアーカイブの生成"
+  ansible.builtin.command: /usr/local/bin/backup_volumes.sh
+  # 冪等性：スクリプト内で作成される最新ファイルがない場合のみ実行
+  # または、常に最新を回収したい場合は creates を外す
+  args:
+    creates: "/tmp/backup_latest.tar.gz"
+
+- name: "Cronによる定期実行登録 (毎日03:00)"
+  ansible.builtin.cron:
+    name: "Nightly Docker Volume Backup"
+    hour: "3"
+    minute: "0"
+    job: "/usr/local/bin/backup_volumes.sh"
+
+# -----------------------------------------------------
+# 2. 司令塔（Server A）へのデータ回収 (Collector Side)
+# -----------------------------------------------------
+- name: "Server A側の受け取り用ディレクトリを作成"
+  ansible.builtin.file:
+    path: "{{ backup_base_dir | default('/backup') }}/{{ inventory_hostname }}"
+    state: directory
+    mode: '0755'
+  delegate_to: localhost
+  become: yes
+
+- name: "バックアップファイルをServer Aに回収"
+  ansible.builtin.fetch:
+    src: "/tmp/backup_latest.tar.gz"
+    dest: "{{ backup_base_dir | default('/backup') }}/{{ inventory_hostname }}/{{ ansible_date_time.date }}.tar.gz"
+    flat: yes
+  register: fetch_result
+
+- name: "Server B側の転送済み一時ファイルを削除（クリーンアップ）"
+  ansible.builtin.file:
+    path: "/tmp/backup_latest.tar.gz"
+    state: absent
+  when: fetch_result.changed
+
+# -----------------------------------------------------
+# 3. Server A側での世代管理 (Retention Side)
+# -----------------------------------------------------
+- name: "14日以上前の古いバックアップを検索"
+  ansible.builtin.find:
+    paths: "{{ backup_base_dir | default('/backup') }}/{{ inventory_hostname }}/"
+    age: "14d"
+    recurse: yes
+  register: old_backups
+  delegate_to: localhost
+
+- name: "古いバックアップの削除実行"
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ old_backups.files }}"
+  delegate_to: localhost

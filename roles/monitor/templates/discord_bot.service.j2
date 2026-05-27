@@ -1,0 +1,15 @@
+[Unit]
+Description=Discord Monitoring Bot
+After=prometheus.service
+
+[Service]
+Type=simple
+User=root
+# Ansible Vaultから復号されたWebhook URLを環境変数として注入
+Environment="DISCORD_WEBHOOK_URL={{ vault_discord_webhook_url }}"
+# Pythonプログラムの実行パスを指定
+ExecStart=/usr/bin/python3 /usr/local/bin/discord_bot.py
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

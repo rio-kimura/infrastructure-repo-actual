@@ -1,0 +1,12 @@
+#!/bin/bash
+# Ansible managed: Dockerボリュームのアーカイブ作成スクリプト
+
+# 1. 既存の古いアーカイブを削除（冪等性の確保）
+rm -f /tmp/backup_latest.tar.gz
+
+# 2. Dockerボリュームを固める
+# ※ --exclude 等で不要なログを除外する設定も可能
+tar -czf /tmp/backup_latest.tar.gz /var/lib/docker/volumes/
+
+# 3. 権限を厳格化
+chmod 600 /tmp/backup_latest.tar.gz

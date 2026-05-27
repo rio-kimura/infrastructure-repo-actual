@@ -1,0 +1,17 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  # Prometheus自身の監視
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # 3台のサーバーのリソース監視
+  - job_name: 'node_exporter'
+    static_configs:
+      - targets:
+          - '10.149.245.110:9100' # Server A
+          - '10.149.245.115:9100' # Server B
+          - '10.149.245.116:9100' # Server C

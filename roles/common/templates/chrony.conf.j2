@@ -1,0 +1,12 @@
+# {{ ansible_managed }}
+# 日本標準時(NICT)を優先参照
+server {{ common_ntp_server }} iburst
+
+# システムクロックの急激な変化を許容する(初期同期用)
+makestep 1.0 3
+
+# カーネルによるリアルタイムクロック(RTC)の同期
+rtcsync
+
+# ログ設定
+logdir /var/log/chrony

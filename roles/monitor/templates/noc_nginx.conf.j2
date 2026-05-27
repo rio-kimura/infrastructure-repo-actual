@@ -1,0 +1,25 @@
+# =================================================================
+# NOCシステム専用 Nginx リバースプロキシ設定 (noc_nginx.conf.j2)
+# =================================================================
+
+server {
+    listen 80;
+    server_name localhost;
+
+    # すべてのアクセスを、バックエンド隔離ネットワーク内のPython（Flask）コンテナへ丸投げする
+    location / {
+        proxy_pass http://noc-analyzer:5000;
+        
+        # バックエンドのPython側で、正しい接続元IPやホスト名を見失わないための識別ヘッダー
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # 万が一のエラー画面の定義
+    error_page 500 502 503 504 /50x.html;
+    location = /50x.html {
+        root /usr/share/nginx/html;
+    }
+}

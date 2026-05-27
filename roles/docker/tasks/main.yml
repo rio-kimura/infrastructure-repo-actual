@@ -1,0 +1,84 @@
+# roles/docker/tasks/main.yml
+---
+# 1. AnsibleからDockerを操作するための前提パッケージ導入
+
+- name: "EPELリポジトリのインストール"
+  ansible.builtin.dnf:
+    name: epel-release
+    state: present
+
+- name: "Python3 pipのインストール"
+  ansible.builtin.dnf:
+    name: python3-pip
+    state: present
+
+- name: "競合を避けるため古いdocker-pyを削除"
+  ansible.builtin.pip:
+    name: docker-py
+    state: absent
+
+- name: "Docker操作用Pythonライブラリをpipで最新化"
+  ansible.builtin.pip:
+    name:
+      - docker
+      - requests==2.31.0  # バージョンを固定して不整合を防ぐ
+    state: present
+    executable: pip3
+
+# 2. リポジトリの準備
+- name: "Docker公式リポジトリの追加"
+  ansible.builtin.yum_repository:
+    name: docker-ce
+    description: Docker CE Stable - $basearch
+    baseurl: https://download.docker.com/linux/centos/9/$basearch/stable
+    gpgcheck: yes
+    gpgkey: https://download.docker.com/linux/centos/gpg
+    enabled: yes
+
+# 3. パッケージインストール (Version Pinning: v29.4.3 に適合する依存セット)
+- name: "Docker Engine一式のインストール (v29.4.3固定)"
+  ansible.builtin.dnf:
+    name:
+      - docker-ce-29.4.3-1.el9
+      - docker-ce-cli-29.4.3-1.el9
+      - containerd.io-1.7.27-3.1.el9       # 依存エラー解消のため1.7.25から1.7.27に引き上げ
+      - docker-buildx-plugin-0.19.3-1.el9
+      - docker-compose-plugin-2.32.4-1.el9
+    state: present
+    allow_downgrade: yes # 既存の古い/新しいバージョンが混在していた場合に強制上書き
+  notify: restart docker
+
+# 4. 運用最適化設定
+- name: "Dockerデーモン設定（ログ容量制限）の配置"
+  ansible.builtin.copy:
+    dest: /etc/docker/daemon.json
+    content: |
+      {
+        "log-driver": "json-file",
+        "log-opts": {
+          "max-size": "10m",
+          "max-file": "3"
+        }
+      }
+    mode: '0644'
+  notify: restart docker
+
+# 5. 権限とサービスの管理
+- name: "作業ユーザーをdockerグループに追加"
+  ansible.builtin.user:
+    name: "{{ ansible_user }}"
+    groups: docker
+    append: yes
+
+- name: "Dockerサービスの起動と有効化"
+  ansible.builtin.service:
+    name: docker
+    state: started
+    enabled: true
+
+# 6. アプリ専用ネットワークの作成
+- name: "アプリ用ブリッジネットワークの作成"
+  community.docker.docker_network:
+    name: app_network
+    state: present
+    driver: bridge

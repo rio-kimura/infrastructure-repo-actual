@@ -1,0 +1,6 @@
+timestamp,server_name,metric_type,value,status
+2026-05-27 09:00:00,server-a,CPU Usage,45.2%,NORMAL
+2026-05-27 09:00:15,server-b,Memory Usage,78.5%,WARNING
+2026-05-27 09:00:30,server-c,Disk IO,12.1MB/s,NORMAL
+2026-05-27 09:01:00,server-a,Network In,845Kbps,NORMAL
+2026-05-27 09:01:15,server-c,CPU Usage,92.1%,CRITICAL

@@ -1,0 +1,54 @@
+#!/bin/bash
+# =================================================================
+# 卒業制作 インフラ基盤：自動バックアップ & 異常通知スクリプト
+# 役割: Server Bの永続データを固め、異常時はDiscordへ即時通知する
+# =================================================================
+
+set -u # 未定義変数があればエラーとして扱う
+# set -e # エラーが発生した時点でスクリプトを終了する (trapで拾うため重要)
+
+# --- 設定値 (Ansible変数から注入) ---
+BACKUP_SRC="/var/lib/docker/volumes"
+BACKUP_DEST="/tmp/backup_latest.tar.gz"
+WEBHOOK_URL="{{ vault_discord_webhook_url }}"
+SERVER_NAME="{{ inventory_hostname }}"
+
+# --- 通知用関数 (Dockerコンテナ側のボットがダウンしていても届くよう直接Webhookを利用) ---
+send_notification() {
+    local color=$1
+    local title=$2
+    local message=$3
+    
+    curl -s -X POST -H "Content-Type: application/json" \
+        -d "{\"embeds\": [{\"title\": \"${title}\", \"description\": \"${message}\", \"color\": ${color}, \"footer\": {\"text\": \"Server: ${SERVER_NAME}\"}}]}" \
+        "${WEBHOOK_URL}"
+}
+
+# --- 異常終了時のエラーハンドラ ---
+error_handler() {
+    local parent_lineno="$1"
+    local message="$2"
+    local code="${3:-1}"
+    echo "Error on or near line ${parent_lineno}; exiting with status ${code}"
+    send_notification 15158332 "🚨 バックアップ失敗" "行番号 ${parent_lineno} 付近でエラーが発生しました。アーカイブ作成が中断された可能性があります。"
+    exit "${code}"
+}
+trap 'error_handler ${LINENO} "$BASH_COMMAND"' ERR
+
+# --- メイン処理 ---
+echo "[$(date)] Starting backup process..."
+
+# 1. DBの静止点確保 (開発班のアプリ構成が確定次第、ここにdumpコマンドを追記)
+# 例: /usr/bin/docker exec [db_container] mysqldump -u root -p password > /tmp/db_backup.sql
+echo "Step 1: DB Export (Skipped - App details pending)"
+
+# 2. データの圧縮アーカイブ作成
+echo "Step 2: Creating tarball..."
+tar -czf "${BACKUP_DEST}" "${BACKUP_SRC}"
+
+# 3. 権限設定 (Ansibleのfetchモジュールで読み取れるように調整)
+chmod 644 "${BACKUP_DEST}"
+
+echo "[$(date)] Backup script finished successfully."
+# 成功通知は通知の氾濫を防ぐため、通常はログ出力のみに留める
+# send_notification 3066993 "✅ バックアップ成功" "一時アーカイブの作成が完了しました。Server Aによる回収待機状態です。"

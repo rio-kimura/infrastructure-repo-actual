@@ -1,0 +1,76 @@
+# roles/security/tasks/main.yml
+---
+# =================================================================
+# 3. セキュリティ & 通信制御 (Firewalld / SELinux / SSH Hardening)
+# =================================================================
+
+- name: "セキュリティ関連パッケージのインストール"
+  ansible.builtin.dnf:
+    name:
+      - policycoreutils-python-utils   # community.general.seport に必須
+      - firewalld                     # ホスト型ファイヤーウォール本体
+      - python3-firewall              # Ansibleからfirewalldを制御するAPI群
+    state: present
+
+# ★ハングアップ対策：非同期（async）で起動し、Ansibleのフリーズを防ぐ
+- name: "Firewalldデーモンの起動と自動起動有効化（ハング回避非同期版）"
+  ansible.builtin.service:
+    name: "firewalld"
+    state: started
+    enabled: true
+  async: 30
+  poll: 0
+
+# ★ハングアップ対策：ネットワークが一瞬瞬断した後のSSHコネクション再確立を待つ
+- name: "Firewalld起動後の接続再確立を待期"
+  ansible.builtin.wait_for_connection:
+    delay: 2
+    timeout: 15
+
+- name: "通信ポート制御（Firewalldルールの適用）"
+  block:
+    - name: "要塞化SSHポート({{ common_ssh_port }})を先行許可"
+      ansible.posix.firewalld:
+        port: "{{ common_ssh_port }}/tcp"
+        permanent: true
+        state: enabled
+        immediate: true
+
+    - name: "Webポート(80)の解放 (Server Bのみ)"
+      ansible.posix.firewalld:
+        port: "80/tcp"
+        permanent: true
+        state: enabled
+        immediate: true
+      when: inventory_hostname == 'server-b'
+
+- name: "監視用ポート(9100)のリッチルール制限 (Server Cからの通信のみ許可)"
+  ansible.posix.firewalld:
+    rich_rule: "rule family='ipv4' source address='{{ hostvars['server-c']['ansible_host'] }}' port port='9100' protocol='tcp' accept"
+    permanent: true
+    state: enabled
+    immediate: true
+  when: inventory_hostname != 'server-c'
+
+# ★完全自動化対応：when句を付与し、さくらVPS(本番)の時だけ自動実行、Vagrantでは自動スキップさせます
+- name: "OSレイヤーの要塞化（SELinux & SSHD制御）"
+  block:
+    - name: "SELinuxで新SSHポート({{ common_ssh_port }})を許可"
+      community.general.seport:
+        ports: "{{ common_ssh_port }}"
+        proto: tcp
+        setype: ssh_port_t
+        state: present
+
+    - name: "SSHD設定の安全化（ポート変更 / パスワード禁止 / Rootログイン禁止）"
+      ansible.builtin.lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: "{{ item.regexp }}"
+        line: "{{ item.line }}"
+        validate: "/usr/sbin/sshd -t -f %s"  # 設定ファイルの事前構文チェック
+      loop:
+        - { regexp: '^#?Port ', line: "Port {{ common_ssh_port }}" }
+        - { regexp: '^#?PasswordAuthentication ', line: "PasswordAuthentication no" }
+        - { regexp: '^#?PermitRootLogin ', line: "PermitRootLogin no" }
+      notify: "restart sshd"
+  when: is_production | default(false)

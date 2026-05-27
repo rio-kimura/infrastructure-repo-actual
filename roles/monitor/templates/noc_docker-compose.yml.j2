@@ -1,0 +1,95 @@
+version: '3.8'
+
+# -----------------------------------------------------
+# ネットワークの完全分離（インフラの要塞化ブリッジ）
+# -----------------------------------------------------
+networks:
+  noc-frontend-net:
+    driver: bridge
+    internal: false  # あなたのPCのブラウザからWebサイト(8080ポート)へアクセスさせるための外部接続用
+  noc-backend-net:
+    driver: bridge
+    internal: true   # 🚨極めて重要: 外部インターネットからの侵入パケットを100%遮断する、コンテナ間だけの秘密のブリッジ社内LAN
+
+services:
+  # -----------------------------------------------------
+  # 1. フロントエンド: NOC Webサーバー (Nginx)
+  # -----------------------------------------------------
+  noc-web:
+    image: nginx:1.25-alpine
+    container_name: noc_web
+    ports:
+      - "8080:80"  # ホスト側の8080番ポートを、コンテナ内部の標準80番(Nginx)に紐付け(ポートフォワード)
+    volumes:
+      # 子設定を、公式イメージの正しい自動読み込みパスへ流し込みます
+      - /opt/noc-system/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - /opt/noc-system/noc_system/templates:/usr/share/nginx/html:ro  # 整理したパスに追従
+    networks:
+      - noc-frontend-net # あなたと繋がるフロント側
+      - noc-backend-net  # 後ろに控えるPythonアプリと繋がるバックエンド側の両方に所属（橋渡し役）
+    environment:
+      - TZ=Asia/Tokyo
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m" # コンテナのログが溢れてディスクがハングアップするのを未然に防ぐ暴走ストッパー
+        max-file: "3"
+    restart: unless-stopped
+
+  # -----------------------------------------------------
+  # 2. バックエンド: NOC動的アプリケーション (Python / Flask)
+  # -----------------------------------------------------
+  noc-analyzer:
+    build:
+      # Server C上の /opt/noc-system を基準（コンテキスト）にします
+      context: /opt/noc-system
+      dockerfile: noc_system/Dockerfile  # 整理したフォルダ内のDockerfileを綺麗に指定
+    container_name: noc_analyzer
+    # ★補正：カレントディレクトリを /opt/noc-system に固定して実行パスのズレを完全排除
+    working_dir: /opt/noc-system
+    command: python3 noc_system/app.py
+    volumes:
+      # 大元のコード資材一式をコンテナ内にマウント
+      - /opt/noc-system/noc_system:/opt/noc-system/noc_system:Z
+      # ★環境自動切り替え対応: Ansibleの配置した「環境別CSV」を、app.pyが狙い撃ちする絶対パスへピンポイントでマウント！
+      - /opt/noc-system/{{ noc_system_data_mode }}/dummy_log.csv:/opt/noc-system/noc_system/dummy_log.csv:Z
+      - /opt/noc-system/noc_system/templates:/opt/noc-system/templates:Z
+    environment:
+      - TZ=Asia/Tokyo
+      - PROMETHEUS_URL=http://10.149.245.116:9090  # 同じServer Cのホスト上で動いているPrometheusのURL
+      - DB_HOST=noc-db                                             # Docker内部DNSの恩恵: コンテナ名を書くだけで、IPを意識せずに自動で名前解決してDBへ接続
+      - DB_NAME=noc_audit_db
+      - DB_USER=noc_operator
+      - DB_PASSWORD={{ vault_discord_webhook_url | default('noc_secure_pass') }} # 本来はVault変数。安全のために暗号化された金庫のパスワードと連動させる
+      # app.pyがコンテナ内部で読み込むべきCSVファイルの絶対パスを指定
+      - CSV_FILE_PATH=/opt/noc-system/noc_system/dummy_log.csv
+    networks:
+      - noc-backend-net  # 🚨 外部ブリッジには所属させず、インターネットの脅威から完全に隔離
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    restart: unless-stopped
+
+  # -----------------------------------------------------
+  # 3. バックエンド: NOC時系列データ蓄積DB (PostgreSQL)
+  # -----------------------------------------------------
+  noc-db:
+    image: postgres:15-alpine
+    container_name: noc_db
+    environment:
+      - TZ=Asia/Tokyo
+      - POSTGRES_DB=noc_audit_db
+      - POSTGRES_USER=noc_operator
+      - POSTGRES_PASSWORD={{ vault_discord_webhook_url | default('noc_secure_pass') }}
+    volumes:
+      - /opt/noc-system/db_data:/var/lib/postgresql/data:Z  # コンテナを何度スクラップ＆ビルドしても、過去のログデータが絶対に消えない永続化領域
+    networks:
+      - noc-backend-net  # 🚨 ports定義（ポートの紐付け）を一切書かないことで、外部から5432ポートを直接叩くルートを完全に封印
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    restart: unless-stopped

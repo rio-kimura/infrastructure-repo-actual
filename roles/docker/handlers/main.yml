@@ -1,0 +1,6 @@
+---
+# daemon.jsonが書き換わった時だけ実行される
+- name: restart docker
+  ansible.builtin.service:
+    name: docker
+    state: restarted

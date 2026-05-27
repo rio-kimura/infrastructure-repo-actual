@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="ja">
+   <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>🛡️ NOC - レポート管理パネル</title>
+      <style>
+         body {
+            background-color: #050b14;
+            background-image:
+               linear-gradient(rgba(14, 116, 144, 0.05) 1px, transparent 1px),
+               linear-gradient(90deg, rgba(14, 116, 144, 0.05) 1px, transparent 1px);
+            background-size: 30px 30px;
+            color: #e2e8f0;
+            font-family: 'Segoe UI', Roboto, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+         }
+
+         .panel-container {
+            background: linear-gradient(145deg, #0b1524, #0d1e36);
+            padding: 40px;
+            border-radius: 16px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6), 0 0 25px rgba(14, 165, 233, 0.15);
+            width: 100%;
+            max-width: 500px;
+            border: 1px solid rgba(14, 165, 233, 0.3);
+            box-sizing: border-box;
+         }
+
+         .panel-header {
+            border-bottom: 1px solid rgba(14, 165, 233, 0.2);
+            padding-bottom: 20px;
+            margin-bottom: 30px;
+            text-align: center;
+         }
+
+         .status-badge {
+            font-size: 11px;
+            background-color: rgba(34, 197, 94, 0.1);
+            color: #22c55e;
+            border: 1px solid rgba(34, 197, 94, 0.4);
+            padding: 4px 12px;
+            border-radius: 20px;
+            display: inline-block;
+            margin-bottom: 15px;
+            letter-spacing: 1px;
+            box-shadow: 0 0 10px rgba(34, 197, 94, 0.2);
+         }
+
+         h1 {
+            font-size: 22px;
+            color: #38bdf8;
+            margin: 0;
+            letter-spacing: 1px;
+            font-weight: 800;
+         }
+
+         .user-info {
+            font-size: 13px;
+            color: #64748b;
+            margin-top: 8px;
+         }
+
+         .form-row {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+            margin-bottom: 30px;
+         }
+
+         label {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 13px;
+            color: #38bdf8;
+            font-weight: bold;
+         }
+
+         select {
+            width: 100%;
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid #1e293b;
+            background-color: #070d16;
+            color: #f8fafc;
+            font-size: 15px;
+            cursor: pointer;
+            outline: none;
+            transition: all 0.3s;
+         }
+
+         select:focus {
+            border-color: #38bdf8;
+            box-shadow: 0 0 10px rgba(56, 189, 248, 0.3);
+         }
+
+         .btn-container {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+         }
+
+         .btn-action {
+            width: 100%;
+            padding: 14px;
+            font-size: 15px;
+            font-weight: bold;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s;
+            letter-spacing: 1px;
+            text-align: center;
+            text-decoration: none;
+            box-sizing: border-box;
+         }
+
+         .btn-primary {
+            background: linear-gradient(135deg, #0284c7, #0369a1);
+            color: white;
+            box-shadow: 0 4px 12px rgba(2, 132, 199, 0.3);
+         }
+
+         .btn-primary:hover {
+            background: linear-gradient(135deg, #0369a1, #075985);
+            box-shadow: 0 0 20px rgba(56, 189, 248, 0.5);
+         }
+
+         .btn-secondary {
+            background: transparent;
+            color: #94a3b8;
+            border: 1px solid #334155;
+         }
+
+         .btn-secondary:hover {
+            background: rgba(148, 163, 184, 0.05);
+            color: #f1f5f9;
+            border-color: #64748b;
+         }
+      </style>
+   </head>
+   <body>
+      <div class="panel-container">
+         <div class="panel-header">
+            <div class="status-badge">● システム稼働中</div>
+            <h1>NOC 監査レポート管理システム</h1>
+            <div class="user-info">担当オペレーター: {{ session.get('username', 'UNKNOWN') }}</div>
+         </div>
+         <form action="/report" method="GET">
+            <div class="form-row">
+               <div>
+                  <label for="year">年（選択）</label>
+                  <select id="year" name="year">
+                     <option value="2026">2026 年</option>
+                     <option value="2025">2025 年</option>
+                  </select>
+               </div>
+               <div>
+                  <label for="month">月</label>
+                  <select id="month" name="month"> {% for m in range(1, 13) %} {% set m_str = "%02d" | format(m) %}
+                     <option value="{{ m_str }}">{{ m_str }} 月</option> {% endfor %} </select>
+               </div>
+               <div>
+                  <label for="day">日</label>
+                  <select id="day" name="day"> {% for d in range(1, 32) %} {% set d_str = "%02d" | format(d) %} <option
+                        value="{{ d_str }}">{{ d_str }} 日</option> {% endfor %} </select>
+               </div>
+            </div>
+            <div class="btn-container">
+               <button type="submit" class="btn-action btn-primary">監査データを取得・生成</button>
+               <a href="/logout" class="btn-action btn-secondary">セッションを切断（ログアウト）</a>
+            </div>
+         </form>
+      </div>
+   </body>
+</html>

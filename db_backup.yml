@@ -1,0 +1,8 @@
+---
+- name: "データベース日次バックアップ・ワークフロー"
+  hosts: app
+  gather_facts: yes
+  tasks:
+    - name: "バックアップRoleの実行"
+      ansible.builtin.include_role:
+        name: backup

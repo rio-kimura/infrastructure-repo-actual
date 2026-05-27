@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="ja">
+   <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>🛡️ NOC - サーバー管理者ログイン</title>
+      <style>
+         body {
+            background-color: #050b14;
+            background-image:
+               linear-gradient(rgba(14, 116, 144, 0.05) 1px, transparent 1px),
+               linear-gradient(90deg, rgba(14, 116, 144, 0.05) 1px, transparent 1px);
+            background-size: 30px 30px;
+            color: #e2e8f0;
+            font-family: 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            overflow: hidden;
+         }
+
+         .login-container {
+            background: linear-gradient(145deg, #0b1524, #0d1e36);
+            padding: 45px 40px;
+            border-radius: 16px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6), 0 0 25px rgba(14, 165, 233, 0.15);
+            width: 100%;
+            max-width: 380px;
+            border: 1px solid rgba(14, 165, 233, 0.3);
+            position: relative;
+            box-sizing: border-box;
+         }
+
+         .login-container::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 15%;
+            width: 70%;
+            height: 3px;
+            background: linear-gradient(90deg, transparent, #38bdf8, transparent);
+         }
+
+         .logo-wrapper {
+            text-align: center;
+            margin-bottom: 30px;
+         }
+
+         .noc-logo {
+            font-size: 32px;
+            font-weight: 900;
+            text-align: center;
+            color: #38bdf8;
+            letter-spacing: 4px;
+            border: 2px solid #38bdf8;
+            display: inline-block;
+            padding: 4px 20px;
+            border-radius: 6px;
+            background-color: rgba(14, 165, 233, 0.1);
+            box-shadow: 0 0 15px rgba(56, 189, 248, 0.3);
+         }
+
+         h2 {
+            text-align: center;
+            font-size: 14px;
+            color: #64748b;
+            margin: 10px 0 30px 0;
+            letter-spacing: 3px;
+         }
+
+         .form-group {
+            margin-bottom: 24px;
+         }
+
+         label {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 13px;
+            color: #38bdf8;
+            font-weight: bold;
+            letter-spacing: 1px;
+         }
+
+         input[type="text"],
+         input[type="password"] {
+            width: 100%;
+            padding: 12px 14px;
+            border-radius: 8px;
+            border: 1px solid #1e293b;
+            background-color: #070d16;
+            color: #f8fafc;
+            font-size: 15px;
+            box-sizing: border-box;
+            transition: all 0.3s ease;
+         }
+
+         input:focus {
+            outline: none;
+            border-color: #38bdf8;
+            background-color: #091424;
+            box-shadow: 0 0 12px rgba(56, 189, 248, 0.3);
+         }
+
+         .btn-submit {
+            width: 100%;
+            padding: 14px;
+            background: linear-gradient(135deg, #0284c7, #0369a1);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: bold;
+            letter-spacing: 2px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-top: 15px;
+            box-shadow: 0 4px 12px rgba(2, 132, 199, 0.3);
+         }
+
+         .btn-submit:hover {
+            background: linear-gradient(135deg, #0369a1, #075985);
+            box-shadow: 0 0 20px rgba(56, 189, 248, 0.5);
+            transform: translateY(-1px);
+         }
+
+         .btn-submit:active {
+            transform: translateY(1px);
+         }
+
+         .alert {
+            background-color: rgba(153, 27, 27, 0.2);
+            color: #fca5a5;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 25px;
+            font-size: 13px;
+            border: 1px solid rgba(239, 68, 68, 0.5);
+            text-align: center;
+            animation: fadeIn 0.4s ease-out;
+         }
+
+         @keyframes fadeIn {
+            from {
+               opacity: 0;
+               transform: translateY(-5px);
+            }
+
+            to {
+               opacity: 1;
+               transform: translateY(0);
+            }
+         }
+      </style>
+   </head>
+   <body>
+      <div class="login-container">
+         <div class="logo-wrapper">
+            <div class="noc-logo">NOC</div>
+         </div>
+         <h2>サーバー管理者ログイン</h2> {% with messages = get_flashed_messages(with_categories=true) %} {% if messages %} {% for
+         category, message in messages %} <div class="alert">⚠️ {{ message }}</div> {% endfor %} {% endif %} {% endwith
+         %} <form action="/login" method="POST">
+            <div class="form-group">
+               <label for="username">管理者ユーザーID</label>
+               <input type="text" id="username" name="username" placeholder="ユーザーIDを入力してください" required
+                  autocomplete="off">
+            </div>
+            <div class="form-group">
+               <label for="password">セキュリティパスワード</label>
+               <input type="password" id="password" name="password" placeholder="パスワードを入力してください" required>
+            </div>
+            <button type="submit" class="btn-submit">システムにログイン</button>
+         </form>
+      </div>
+   </body>
+</html>

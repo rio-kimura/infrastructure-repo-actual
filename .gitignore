@@ -1,0 +1,16 @@
+# Vagrant temporary files
+.vagrant/
+
+# Ansible retry files
+*.retry
+
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Machine-specific files
+.DS_Store
+Thumbs.db
+
+# Vault password file (もし今後作成する場合)
+.vault_password

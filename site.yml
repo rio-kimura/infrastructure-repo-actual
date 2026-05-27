@@ -1,0 +1,98 @@
+---
+# =================================================================
+# 卒業制作 インフラ構築自動化 プレイ完全分離型マスタープレイブック (site.yml)
+# =================================================================
+
+# -----------------------------------------------------
+# フェーズ1：未構築ノードに対する初期SSH要塞化（ポート22番で接続）
+# -----------------------------------------------------
+- name: "フェーズ1：未構築ノードの初期SSH要塞化（ポート22接続）"
+  hosts: all
+  become: yes
+  gather_facts: no
+  vars:
+    ansible_port: 22
+  ignore_unreachable: yes
+
+  tasks:
+    - name: "ポート22番での接続・疎通確認"
+      ansible.builtin.raw: echo "Port 22 check"
+      register: port_22_check
+      failed_when: false
+
+    - name: "未要塞化ホストに対するセキュリティ要塞化の一括適用"
+      include_role:
+        name: "{{ item }}"
+      loop:
+        - common    # Swap, 時刻同期, Node Exporter等
+        - security  # SSH Port 2222化, Firewalld設定
+      when: port_22_check.rc is defined and port_22_check.rc == 0
+
+# -----------------------------------------------------
+# フェーズ2：全ノード共通の本構築（要塞化ポート2222番で接続）
+# -----------------------------------------------------
+- name: "フェーズ2：インフラ本構築とミドルウェア展開（ポート2222接続）"
+  hosts: all
+  become: yes
+  vars:
+    ansible_port: 2222
+
+  roles:
+    - common
+    - security
+
+# -----------------------------------------------------
+# フェーズ3：[Server A] 司令塔としての受け入れ準備
+# -----------------------------------------------------
+- name: "Server A：バックアップ回収用ストレージの準備"
+  hosts: control
+  become: yes
+  vars:
+    ansible_port: 2222
+  tasks:
+    - name: "バックアップルートディレクトリの作成"
+      ansible.builtin.file:
+        path: "/backup"
+        state: directory
+        owner: vagrant
+        group: vagrant
+        mode: '0755'
+
+    - name: "対象サーバー別回収ディレクトリの作成"
+      ansible.builtin.file:
+        path: "/backup/{{ item }}"
+        state: directory
+        owner: vagrant
+        group: vagrant
+        mode: '0755'
+      loop:
+        - server-a
+        - server-b
+        - server-c
+
+# -----------------------------------------------------
+# フェーズ4：[Server B] 実行環境構築
+# -----------------------------------------------------
+- name: "Server B：Docker実行環境とApp/DB展開"
+  hosts: app
+  become: yes
+  vars:
+    ansible_port: 2222
+  vars_files:
+    - "group_vars/secrets.yml"
+  roles:
+    - docker  # Engine導入
+    - app     # MariaDB/Nginxコンテナデプロイ
+    - backup  # バックアップスクリプト配置とCron登録
+
+# -----------------------------------------------------
+# フェーズ5：[Server C] 監視管制塔の構築
+# -----------------------------------------------------
+- name: "Server C：監視・通知・NOC統合システムの構築"
+  hosts: monitor
+  become: yes
+  vars:
+    ansible_port: 2222
+  roles:
+    - docker  # コンテナ実行基盤
+    - monitor # Prometheus, Grafana, NOC統合コンテナ

@@ -1,0 +1,91 @@
+---
+# =================================================================
+# 卒業制作 インフラ構築自動化 実行環境役割定義 (roles/app/tasks/main.yml)
+# =================================================================
+
+# -----------------------------------------------------
+# 1. DBデータ永続化の準備
+# -----------------------------------------------------
+- name: "DBデータ保存用ディレクトリの作成"
+  ansible.builtin.file:
+    path: /var/lib/mysql
+    state: directory
+    mode: '0755'
+    owner: root
+    group: root
+
+# -----------------------------------------------------
+# 2. MariaDBコンテナの展開 (Database)
+# -----------------------------------------------------
+# 【フリーズ対策】async と poll を導入し、ネットワーク遅延によるタスクハングを防止
+- name: "MariaDBコンテナイメージの事前取得（冪等性の担保）"
+  community.docker.docker_image:
+    name: "mariadb"
+    tag: "10.11"
+    source: pull
+    state: present
+  async: 300       # 最大5分間、バックグラウンドでのダウンロードを許容
+  poll: 5          # 5秒ごとに進捗をチェックしてハングを防止
+  register: mariadb_pull_result
+  until: mariadb_pull_result is success
+  retries: 3
+  delay: 5
+
+- name: "MariaDBコンテナの起動"
+  community.docker.docker_container:
+    name: db_server
+    image: mariadb:10.11
+    state: started
+    restart_policy: unless-stopped
+    # 💡 インフラ班の設計に基づき、定義済みのアプリ用ネットワークに参加
+    networks:
+      - name: app_network
+    # 卒業制作スペックに基づくリソース制限
+    memory: 512M
+    cpus: 0.5
+    # ホストOSのSELinuxコンテキスト(:Z)を考慮したマウント
+    volumes:
+      - /var/lib/mysql:/var/lib/mysql:Z
+    # 機密情報は Ansible Vault から注入 / 環境変数変更時は厳格にコンテナ再生成
+    comparisons:
+      env: strict
+    env:
+      MARIADB_ROOT_PASSWORD: "{{ vault_db_root_password }}"
+      MARIADB_DATABASE: "grad_db"
+      TZ: "{{ common_timezone | default('Asia/Tokyo') }}"
+
+# -----------------------------------------------------
+# 3. Nginxコンテナの展開 (Application Entry)
+# -----------------------------------------------------
+# 【フリーズ対策】Nginx側にも async と poll を適用し安全にダウンロード
+- name: "Nginxコンテナイメージの事前取得（冪等性の担保）"
+  community.docker.docker_image:
+    name: "nginx"
+    tag: "stable-alpine"
+    source: pull
+    state: present
+  async: 180       # 最大3分間待機
+  poll: 5
+  register: nginx_pull_result
+  until: nginx_pull_result is success
+  retries: 3
+  delay: 5
+
+- name: "Nginxコンテナの起動"
+  community.docker.docker_container:
+    name: web_server
+    image: nginx:stable-alpine
+    state: started
+    restart_policy: unless-stopped
+    # 💡 MariaDBと同じアプリ用ネットワークでコンテナ間通信を可能にする
+    networks:
+      - name: app_network
+    # 卒業制作スペックに基づくリソース制限
+    memory: 768M
+    cpus: 0.75
+    ports:
+      - "80:80"
+    comparisons:
+      env: strict
+    env:
+      TZ: "{{ common_timezone | default('Asia/Tokyo') }}"
