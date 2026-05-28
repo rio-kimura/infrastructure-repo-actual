@@ -55,12 +55,13 @@
     mode: '0644'
   register: noc_code_update
 
-# 💡【リファクタリングの核心】
-# バラバラに送るのをやめ、Windows側で整理した `noc_system` フォルダを丸ごと一発で同期！
+# 💡【リファクタリングの核心：パス不整合の修正】
+# 末尾スラッシュ（/）付きで中身を同期し、宛先を /opt/noc-system/ に修正することで、
+# サーバーCの該当ディレクトリ直下に Dockerfile と src/ フォルダが正しく並ぶように配置します。
 - name: "NOCシステム Webアプリケーション資材一式（コード/Dockerfile/HTML）の構造維持配布"
   ansible.builtin.copy:
     src: noc_system/
-    dest: /opt/noc-system/noc_system/
+    dest: /opt/noc-system/
     mode: '0755'
   register: noc_app_assets_update
 
