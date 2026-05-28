@@ -19,8 +19,19 @@ def send_discord(content):
             print(f"Discord Send Error: {e}")
 
 
+def get_server_display_name(instance):
+    """IPアドレスをわかりやすいサーバー名に変換する関数"""
+    if "10.149.245.110" in instance:
+        return "サーバーA"
+    elif "10.149.245.115" in instance:
+        return "サーバーB"
+    elif "10.149.245.116" in instance:
+        return "サーバーC"
+    return f"サーバー({instance})"
+
+
 def check_realtime_alerts():
-    """1分ごとの閾値監視[cite: 1]"""
+    """1分ごとの閾値監視"""
     try:
         # CPU使用率の取得（直近5分平均）
         query = '100 - (avg by (instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)'
@@ -30,16 +41,17 @@ def check_realtime_alerts():
         for res in results:
             usage = float(res["value"][1])
             instance = res["metric"].get("instance", "unknown")
-            if usage > 80:  # 閾値80%[cite: 1]
+            if usage > 80:  # 閾値80%
+                server_name = get_server_display_name(instance)
                 send_discord(
-                    f"🚨 **【NOC警報】高負荷検知**\n対象: {instance}\nCPU使用率: {usage:.1f}%"
+                    f"🚨 **【NOC警報】高負荷検知**\n対象: {server_name}: {instance}\nCPU使用率: {usage:.1f}%"
                 )
     except Exception as e:
         print(f"Alert Check Failed: {e}")
 
 
 def generate_daily_report():
-    """24時間の統計分析とレポート送信[cite: 1]"""
+    """24時間の統計分析とレポート送信"""
     print(f"Generating Daily Report at {datetime.now()}")
     try:
         # 過去24時間のデータを15分刻みで取得
@@ -62,8 +74,12 @@ def generate_daily_report():
             values = [float(v[1]) for v in entry["values"]]
             df = pd.Series(values)
 
+            # 動的に「サーバーA/B/C」の名前を取得
+            server_name = get_server_display_name(instance)
+
+            # ご希望のフォーマット（名前の後に改行を入れ、IPアドレスを出力）に組み立て
             report_msg += (
-                f"🔹 サーバー: {instance}\n"
+                f"{server_name}: {instance}\n"
                 f"　 平均負荷: {df.mean():.1f}%\n"
                 f"　 最大負荷: {df.max():.1f}%\n"
             )
@@ -73,7 +89,7 @@ def generate_daily_report():
         send_discord(f"⚠️ 日次レポート生成に失敗しました: {e}")
 
 
-# スケジュール登録[cite: 1]
+# スケジュール登録
 schedule.every(1).minutes.do(check_realtime_alerts)
 schedule.every().day.at(REPORT_TIME).do(generate_daily_report)
 

@@ -158,7 +158,49 @@
       notify: restart sshd
 
 # -----------------------------------------------------
-# 4. 長期連続稼働テスト用：自動自律運用スケジュール設定
+# 4. Discordボット環境整備 & 資材デプロイ (本番VPS想定構成)
+# -----------------------------------------------------
+- name: "【Server A限定】pipパッケージマネージャのインストール"
+  ansible.builtin.dnf:
+    name:
+      - python3-pip
+    state: present
+  when: inventory_hostname == 'server-a'
+
+- name: "【Server A限定】ボット動作に必要なPython外部ライブラリをインストール"
+  ansible.builtin.pip:
+    name:
+      - schedule
+      - requests
+      - pandas
+    state: present
+  when: inventory_hostname == 'server-a'
+
+- name: "【Server A限定】ボットソースコードの独立デプロイ(/optへの配置)"
+  ansible.builtin.copy:
+    src: "roles/monitor/files/noc_bot"
+    dest: "/opt/"
+    owner: "vagrant"
+    group: "vagrant"
+    mode: "0755"
+  when: inventory_hostname == 'server-a'
+
+- name: "【Server A限定】ボットのコードを本番Cron仕様（RUN_ONCEスイッチ対応）に全自動置換"
+  ansible.builtin.replace:
+    path: /opt/noc_bot/src/main.py
+    regexp: '(\s+)while True:\n\s+schedule\.run_pending\(\)\n\s+time\.sleep\(1\)'
+    replace: |
+      \1import os
+      \1if os.environ.get("RUN_ONCE") == "true":
+      \1    generate_daily_report()
+      \1else:
+      \1    while True:
+      \1        schedule.run_pending()
+      \1        time.sleep(1)
+  when: inventory_hostname == 'server-a'
+
+# -----------------------------------------------------
+# 5. 長期連続稼働テスト用：自動自律運用スケジュール設定
 # -----------------------------------------------------
 - name: "【Server A限定】Discordへ本番レポートを自動定期配信(AM 9:00)"
   ansible.builtin.cron:
@@ -166,7 +208,8 @@
     minute: "0"
     hour: "9"
     user: "vagrant"
-    job: "python3 /opt/noc-integrated-bot/main.py >> /var/log/noc_bot.log 2>&1"
+    # 🎯 IPアドレスとWebhook URLを生データからAnsible変数（{{ ... }}）に完全統合しました
+    job: "export PROMETHEUS_URL={{ prometheus_internal_url | default('http://localhost:9090') }} && export DISCORD_WEBHOOK_URL='{{ vault_discord_webhook_url }}' && export RUN_ONCE=true && python3 /opt/noc_bot/src/main.py >> /var/log/noc_bot.log 2>&1"
   when: inventory_hostname == 'server-a'
 
 - name: "【Server A限定】時系列環境データを自動夜間バックアップ(AM 3:00)"
