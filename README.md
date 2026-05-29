@@ -267,6 +267,8 @@ EOF
 実行権限を付与して実行
 ```Bash
 chmod +x kickoff.sh
+```
+```Bash
 ./kickoff.sh
 ```
 ⚠️ 確認: スクリプトの最後に、全てのノードから緑色の "ping": "pong" が返ってきれば大成功です。
@@ -277,13 +279,14 @@ chmod +x kickoff.sh
 共有フォルダの権限制限をバイパスする環境変数を指定
 ```Bash
 export ANSIBLE_CONFIG=./ansible.cfg
-隔離した金庫のパスワードを指定し、インフラ全体のフルオート構築・要塞化を開始
 ```
+隔離した金庫のパスワードを指定し、インフラ全体のフルオート構築・要塞化を開始
 
 ```Bash
 ansible-playbook -i inventories/vagrant/hosts.ini site.yml --vault-password-file ~/.vault_password
-⚠️ 確認: 対策済みのPlaybookなので、未定義エラーやDockerのタイムアウトを起こすことなく、一気に最後までノンストップで駆け抜けてオールグリーン（failed=0）を叩き出します。これですべての工程が完全自動で復元されました！
 ```
+⚠️ 確認: 対策済みのPlaybookなので、未定義エラーやDockerのタイムアウトを起こすことなく、一気に最後までノンストップで駆け抜けてオールグリーン（failed=0）を叩き出します。これですべての工程が完全自動で復元されました！
+
 🛠️ 付録：もしコマンドの途中でフリーズ・停止した場合の強制脱出（デバッグ）
 VagrantやVirtualBoxの処理を途中で強制終了（Ctrl + C）した際、Windowsのメモリにプロセスの幽霊（ロック）が残って動かなくなった場合は、WindowsのPowerShellで以下をそのまま実行してゾンビプロセスを一掃してください。
 
@@ -378,9 +381,9 @@ SSH接続ポート: 2222
 変更後のセキュアポート2222と、Vagrantが内部で保持しているServer A専用の秘密鍵を直接明示してログイン
 ```PowerShell
 ssh -p 2222 -i .vagrant/machines/server-a/virtualbox/private_key vagrant@10.149.245.110
+```
 💡 初回接続時の警告（Host Key Verification）が表示された場合
 インフラ要塞化によってサーバー側の鍵識別情報が変わるため、再ログイン時に以下のセキュリティメッセージが必ず1度だけ表示されます。
-```
 
 ```Plaintext
 Are you sure you want to continue connecting (yes/no/[fingerprint])?
