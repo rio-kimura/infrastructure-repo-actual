@@ -168,7 +168,8 @@
     volumes:
       - /var/lib/noc_reports:/app/reports:Z
     env:
-      PROMETHEUS_URL: "{{ prometheus_endpoint | default('http://localhost:9090') }}"
+      # 🎯 [不整合修正] 変数名を共通仕様の `prometheus_internal_url` へ完全統一！
+      PROMETHEUS_URL: "{{ prometheus_internal_url | default('http://10.149.245.116:9090') }}"
       DISCORD_WEBHOOK_URL: "{{ vault_discord_webhook_url }}"
       REPORT_TIME: "{{ noc_report_schedule | default('09:00') }}"
       TZ: "Asia/Tokyo"

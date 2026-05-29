@@ -9,7 +9,7 @@ docker_version: "29.4.3"
 python_base_image: "python:3.12-slim"
 
 # 2. System・基盤設定
-# OSの基本設定。ChronyやSSH設定で使用
+# OSの基本設定。ChronyやSSH設定、全サーバーのOSタイムゾーンを日本時間に固定で使用
 common_ssh_port: 2222
 common_timezone: "Asia/Tokyo"
 common_ntp_server: "ntp.nict.jp"

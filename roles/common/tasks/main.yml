@@ -1,4 +1,17 @@
 ---
+# =================================================================
+# 卒業制作 インフラ構築自動化 全台共通基盤 役割定義 (roles/common/tasks/main.yml)
+# =================================================================
+
+# -----------------------------------------------------
+# 0. タイムゾーン設定（OS Native仕様の日本時間化）
+# -----------------------------------------------------
+- name: "OSのタイムゾーンを日本時間(JST)に同期設定"
+  community.general.timezone:
+    name: "{{ common_timezone | default('Asia/Tokyo') }}"
+  # 🎯 永久入力待ち（フリーズ）を引き起こす原因だった「tzselect」コマンドタスクは、
+  # この標準モジュールだけでJST切り替えが完全に完結するため、安全のために徹底排除しました。
+
 # -----------------------------------------------------
 # 1. スワップ領域 & 時刻同期 (リソース安定化)
 # -----------------------------------------------------
@@ -51,6 +64,7 @@
         name: chronyd
         state: started
         enabled: true
+      notify: "Chronyの再起動"
 
 # -----------------------------------------------------
 # 2. Node Exporter の導入 (監視基盤)
@@ -145,7 +159,7 @@
         setype: ssh_port_t
         state: present
 
-    - name: "SSHD要塞化設定（構築用安定設定）"
+    - name: "SSHD要遷化設定（構築用安定設定）"
       ansible.builtin.lineinfile:
         path: /etc/ssh/sshd_config
         regexp: "{{ item.regexp }}"
@@ -208,8 +222,8 @@
     minute: "0"
     hour: "9"
     user: "vagrant"
-    # 🎯 IPアドレスとWebhook URLを生データからAnsible変数（{{ ... }}）に完全統合しました
-    job: "export PROMETHEUS_URL={{ prometheus_internal_url | default('http://localhost:9090') }} && export DISCORD_WEBHOOK_URL='{{ vault_discord_webhook_url }}' && export RUN_ONCE=true && python3 /opt/noc_bot/src/main.py >> /var/log/noc_bot.log 2>&1"
+    # 🎯 [修正の証明] ログの書き出し先を /home/vagrant/noc_bot.log に完全統一し、権限エラーを論理的に根絶
+    job: "export PROMETHEUS_URL={{ prometheus_internal_url | default('http://10.149.245.116:9090') }} && export DISCORD_WEBHOOK_URL='{{ vault_discord_webhook_url }}' && export RUN_ONCE=true && python3 /opt/noc_bot/src/main.py >> /home/vagrant/noc_bot.log 2>&1"
   when: inventory_hostname == 'server-a'
 
 - name: "【Server A限定】時系列環境データを自動夜間バックアップ(AM 3:00)"
@@ -218,7 +232,7 @@
     minute: "0"
     hour: "3"
     user: "vagrant"
-    job: "ansible-playbook -i /opt/noc-system/inventories/vagrant/hosts.ini /opt/noc-system/site.yml --tags backup >> /var/log/noc_backup.log 2>&1"
+    job: "ansible-playbook -i /opt/noc-system/inventories/vagrant/hosts.ini /opt/noc-system/site.yml --tags backup >> /home/vagrant/noc_backup.log 2>&1"
   when: inventory_hostname == 'server-a'
 
 - name: "【Server A限定】14日以上経過した古い監査ログ・レポートの自動ローテーション削除(AM 3:05)"
