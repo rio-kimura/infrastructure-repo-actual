@@ -71,7 +71,7 @@
         - server-c
 
 # -----------------------------------------------------
-# フェーズ4：[Server B] 実行環境構築
+# フェーズ4：[Server B] 実行環境構築（Docker & Web/DBコンテナ）
 # -----------------------------------------------------
 - name: "Server B：Docker実行環境とApp/DB展開"
   hosts: app
@@ -80,19 +80,56 @@
     ansible_port: 2222
   vars_files:
     - "group_vars/secrets.yml"
+  
   roles:
     - docker  # Engine導入
     - app     # MariaDB/Nginxコンテナデプロイ
     - backup  # バックアップスクリプト配置とCron登録
 
+  tasks:
+    # 手動検証で特定した「web_server」と「db_server」のコンテナ状態をIaCで完全固定化
+    - name: "【追加】MariaDBコンテナ(db_server)の起動状態保証"
+      community.docker.docker_container:
+        name: db_server
+        image: mariadb:10.11
+        state: started
+        restart_policy: always
+        env:
+          MYSQL_ROOT_PASSWORD: "{{ db_root_password | default('root_password') }}"
+
+    - name: "【追加】Nginxコンテナ(web_server)の起動状態保証"
+      community.docker.docker_container:
+        name: web_server
+        image: nginx:stable-alpine
+        state: started
+        restart_policy: always
+        ports:
+          - "80:80"
+
 # -----------------------------------------------------
-# フェーズ5：[Server C] 監視管制塔の構築
+# フェーズ5：[Server C] 監視管制塔の構築（Prometheus, Grafana, NOC-Bot）
 # -----------------------------------------------------
 - name: "Server C：監視・通知・NOC統合システムの構築"
   hosts: monitor
   become: yes
   vars:
     ansible_port: 2222
+  
   roles:
     - docker  # コンテナ実行基盤
     - monitor # Prometheus, Grafana, NOC統合コンテナ
+
+  tasks:
+    # 手動で動かした「NOCボット環境」をServer Cのシステム内にコードとして自動配備
+    - name: "【追加】NOCボット用のディレクトリ作成"
+      ansible.builtin.file:
+        path: /opt/noc_bot/src
+        state: directory
+        mode: '0755'
+
+    - name: "【追加】NOCボット本体(main.py)をServer Cへ自動デプロイ"
+      ansible.builtin.copy:
+        # 💡 パスエラーを防ぐため、コントローラー内の絶対パスに変更して確実に回収します
+        src: /opt/noc_bot/src/main.py
+        dest: /opt/noc_bot/src/main.py
+        mode: '0755'
